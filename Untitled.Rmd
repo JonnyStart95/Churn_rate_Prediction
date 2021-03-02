@@ -1,0 +1,29 @@
+---
+title: "Untitled"
+author: "MINGLIANG WEI"
+date: "14/11/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+Our strategy is to find those will be influenced the most if got a invitation, meaning that we will train two sets of model to simulate if customer will leave in 3 months under the situation if we invite them or not, we will subtract two possibilities get from the models seperately and get the uplift curve, using the uplift curve, we will find those who have the largest uplift.
+```{r}
+summary(cars)
+```
+```{r echo=TRUE}
+    streamimp=streamraw%>%
+      mutate(MISS_timeSinceLastComplaints=is.na(timeSinceLastComplaints),MISS_timeSinceLastTechProb=is.na(timeSinceLastTechProb),MISS_phoneBalance=is.na(phoneBalance),MISS_cashDown=is.na(cashDown),MISS_phonePrice=is.na(phonePrice))
+```
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.

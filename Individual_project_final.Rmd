@@ -1,0 +1,170 @@
+---
+output:
+  html_document: 
+    keep_md: yes
+    df_print: paged
+  pdf_document: default
+---
+### Retention Data and Customer Intelligence-Round 1
+##### MINGLIANG WEI
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library("plyr")
+library(dplyr)
+library(tidyselect)
+source("Theme4-functions.R")
+```
+Our strategy is to find the people who has the most largetst possiblity to leave and invite them to prevent them from leaving.Firstly, I have checked the data and find out that there are so many missing values there.
+```{r paged.print=TRUE, r,results='hide'}
+streamraw=read.csv("Retention_train.csv")
+summary(streamraw)
+```
+To avoid missing values which will cause a misleading to the regression, we will give the values of the NA obeying the caracteristic of those variables who have missing values.(Average, Maximum,Medium based on the real business meaning environment) and changing those factors varibales into factor format.(e.g.)
+```{r include=FALSE}
+streamraw$timeSinceLastIsOverData[is.na(streamraw$timeSinceLastIsOverData)]=80
+streamraw$timeSinceLastIsOverVoice[is.na(streamraw$timeSinceLastIsOverVoice)]=30
+streamraw$timeSinceLastComplaints[is.na(streamraw$timeSinceLastComplaints)]=100
+```
+```{r}
+streamraw$timeSinceLastTechProb[is.na(streamraw$timeSinceLastTechProb)]=100
+streamraw$minutesVoice[is.na(streamraw$minutesVoice)]=200
+```
+```{r include=FALSE}
+streamraw=streamraw%>%
+  mutate(isWorkPhone=as.factor(isWorkPhone), unlimitedVoice=as.factor(unlimitedVoice), 
+         unlimitedText=as.factor(unlimitedText),promo=as.factor(promo))
+streamraw[is.na(streamraw)]=0
+```
+Set the artificial variable 'Freq' which means the number of people who are using the plan in each single family to simulate the factor of conformity behavior.
+```{r include=FALSE}
+Index=streamraw%>%select("ID","IDfamily")
+Index_table=data.frame(table(Index$IDfamily))
+streamraw <- merge(x=streamraw,y=Index_table,by.x = "IDfamily", by.y = "Var1", all.x = TRUE)
+```
+```{r}
+summary(streamraw$Freq)
+```
+Seperate the data into the training set and the testing set.
+```{r include=FALSE}
+stream=streamraw%>%
+  filter(promo==0)%>%
+  select(-c("promo","unlimitedText","ID","IDfamily"))
+set.seed(88888)
+```
+```{r include=FALSE}
+trainID=sample(1:677933,550000)
+train=stream[trainID,]
+validate=stream[-trainID,]
+```
+Doing the binary regression and get mod1
+```{r warning=FALSE}
+mod1=glm(churnIn3Month~.,family="binomial", data=train)
+```
+Doing the prediction based on our model we get from the training data.
+```{r warning=FALSE, paged.print=TRUE}
+p1=predict(mod1,newdata=validate,type="response")
+cbind(p1,validate)[sort.list(p1,decreasing=TRUE)[1:2],]
+```
+Adding predict_correction_p1 as our index showing the prediction correction rate of our model
+```{r}
+cbind1=cbind(p1,validate)[sort.list(p1,decreasing=TRUE)[1:10000],]
+predict_correction_p1=sum(cbind1$churnIn3Month)/10000
+predict_correction_p1
+```
+We can get the mod2 by using the stepwise of mod1, using the backforward Algorithm, we can get another model named "bestp".
+```{r warning=FALSE, include=FALSE}
+train_bestmod=train%>%
+  select(nbAdultAvg,chrono,age,gender,isWorkPhone,planType,data,dataAvgConsumption,nbrIsOverData,
+         timeSinceLastIsOverData,unlimitedVoice,minutesVoice,voiceAvgConsumption,nbrIsOverVoice,
+         timeSinceLastIsOverVoice,textoAvgConsumption,cashDown,timeSinceLastTechProb,
+         nbrTechnicalProblems,timeSinceLastComplaints,nbrComplaints,lifeTime,Freq,baseMonthlyRateForPlan,churnIn3Month)
+validate_bestmod=validate%>%
+  select(nbAdultAvg,chrono,age,gender,isWorkPhone,planType,data,dataAvgConsumption,nbrIsOverData,
+         timeSinceLastIsOverData,unlimitedVoice,minutesVoice,voiceAvgConsumption,nbrIsOverVoice,
+         timeSinceLastIsOverVoice,textoAvgConsumption,cashDown,timeSinceLastTechProb,
+         nbrTechnicalProblems,timeSinceLastComplaints,nbrComplaints,lifeTime,Freq,baseMonthlyRateForPlan,churnIn3Month)
+keep=rep(TRUE,23)
+bestmod=glm(churnIn3Month~.,family="binomial",data=train_bestmod)
+bestkeep=keep
+bestp=predict(bestmod,newdata=validate_bestmod,type="response")
+bestAUC=roc(validate_bestmod$churnIn3Month,bestp)$AUC
+newbest=TRUE
+while(sum(keep)>=2 & newbest){
+  newbest=FALSE
+  keep=bestkeep
+  cat("\nBest model so far:",names(train_bestmod)[bestkeep])
+  for(i in (1:23)[keep]){
+    cat(".")
+    keep[i]=FALSE
+    mod=glm(churnIn3Month~.,family="binomial",data=train_bestmod[,c(keep,TRUE,TRUE)])
+    p=predict(mod,newdata=validate_bestmod,type="response")
+    AUC=roc(validate_bestmod$churnIn3Month,p)$AUC
+    if(AUC>bestAUC){
+      newbest=TRUE
+      bestmod=mod
+      bestkeep=keep
+      bestp=p
+      bestAUC=AUC
+    }
+    keep[i]=TRUE
+  }
+}
+```
+```{r include=FALSE}
+bestmod_cbind=cbind(bestp,validate_bestmod)
+bestmod_cbind=cbind(bestp,validate_bestmod)[sort.list(bestp,decreasing=TRUE)[1:10000],]
+predict_correction_bestp=sum(bestmod_cbind$churnIn3Month)/10000
+```
+```{r}
+predict_correction_bestp
+```
+```{r}
+bestAUC
+```
+```{r}
+leaving_rate=sum(streamraw$churnIn3Month)/nrow(streamraw)
+leaving_rate
+```
+But the prediction correction rate for this model is too small for a good binory model,after checking the previous dataset. We can get the leaving rate for all the clients.
+
+#### Modifying Strategy
+a.We find out that only 2.7% percentage of people will leave in three months, and the most largest possibiliy of mod1 is 12.4% combing the largest 7.12% prediction correction rate from all the models,which means that we don't have a big confidence to find out those who will leave in 3 months and since there will not be too much people to leave no matter if we invites them or not, so we would like to invite as less clients as possible according to the condition.  
+b.Plus we are not sure if we invite them to come to our dinner event will help to change their mind from leaving, so we modify our strategy from inviting those who has the largest possibilities to leave to another modified strategy that finding the expectation money we will lost for each person, it means that we will take the potential value of each customer into consideration.     
+c.We will use the equations as follows to caculate the potential value of each customer:     
+$PotentialValue=baseMonthlyRateForPlan+(baseMonthlyRateForPhone+cashDown+phonePrice+phoneBalance)^{1/2}$  
+$ExpectationLossingValue=PotentialValue*Probability$  
+```{r include=FALSE}
+streamscore=read.csv("Retention_score.csv")
+streamscore%>% nrow()
+str(streamscore)
+summary(streamscore)
+Index_score=streamscore%>%select("ID","IDfamily")
+Index_table_score=data.frame(table(Index_score$IDfamily))
+streamscore <- merge(x=streamscore,y=Index_table_score,by.x = "IDfamily", by.y = "Var1", all.x = TRUE)
+streamscore$timeSinceLastTechProb[is.na(streamscore$timeSinceLastTechProb)]=100
+streamscore$minutesVoice[is.na(streamscore$minutesVoice)]=200
+streamscore$timeSinceLastIsOverData[is.na(streamscore$timeSinceLastIsOverData)]=100
+streamscore$timeSinceLastIsOverVoice[is.na(streamscore$timeSinceLastIsOverVoice)]=30
+streamscore$timeSinceLastComplaints[is.na(streamscore$timeSinceLastComplaints)]=100
+streamscore[is.na(streamscore)]=0
+streamscore=streamscore%>%
+  mutate(isWorkPhone=as.factor(isWorkPhone), unlimitedVoice=as.factor(unlimitedVoice), 
+         unlimitedText=as.factor(unlimitedText))
+```
+```{r include=FALSE}
+p1_score=predict(mod1,newdata=streamscore,type="response")
+p1_score_cbind=cbind(p1_score,streamscore)
+```
+Processing the score data and use the equation we mentioned above to predict the expectation money we will lost for each person and find the largest 8000 ones.  
+We will filter those people whose Freq is 1 because based on the rule of conformity behavior, the one who has the least degree pf conformity behavior will more likely to leave.
+```{r warning=FALSE, paged.print=TRUE}
+p1_score_cbind=p1_score_cbind%>%
+  mutate(expectation_value_p1=(baseMonthlyRateForPlan+(baseMonthlyRateForPhone+cashDown+phonePrice+phoneBalance)^0.5)*p1_score)
+p1_score_cbind=p1_score_cbind[sort.list(p1_score_cbind$expectation_value_p1,decreasing=TRUE)[1:nrow(p1_score_cbind)],]%>%filter(Freq<=1)
+```
+Processing the score data and use the equation we mentioned above to predict the expectation money we will lost for each person and find the largest 8000 ones.  
+We will filter those people whose Freq is 1 because based on the rule of conformity behavior, the one who has the least degree pf conformity behavior will more likely to leave.
+```{r warning=FALSE, paged.print=TRUE}
+head(p1_score_cbind)[1:2,]
+``` 
+

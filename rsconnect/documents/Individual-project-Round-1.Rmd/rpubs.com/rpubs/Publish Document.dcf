@@ -1,0 +1,10 @@
+name: Publish Document
+title:
+username:
+account: rpubs
+server: rpubs.com
+hostUrl: rpubs.com
+appId: https://api.rpubs.com/api/v1/document/542758/5346e857b848437aaf4b2348386a4b35
+bundleId: https://api.rpubs.com/api/v1/document/542758/5346e857b848437aaf4b2348386a4b35
+url: http://rpubs.com/weimingliang95/542758
+when: 1571963147.14029
